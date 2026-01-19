@@ -1,0 +1,103 @@
+/* style.css - responsive styles */
+:root{
+  --bg:#f4f7fb; --card:#ffffff; --accent:#0b5cff; --danger:#c23a3a; --muted:#6b7280;
+  --radius:10px; --shadow:0 8px 22px rgba(12,24,40,0.06);
+  --max-width:1100px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; padding:18px; font-family:Inter, Tahoma, Arial, sans-serif;
+  background:var(--bg); color:#111; -webkit-font-smoothing:antialiased;
+}
+.container{max-width:var(--max-width);margin:0 auto}
+.card{
+  background:var(--card); padding:18px; border-radius:var(--radius); box-shadow:var(--shadow);
+  margin-bottom:18px;
+}
+.header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.h1{font-size:18px;font-weight:700}
+.muted{color:var(--muted);font-size:13px}
+.input, input, select, textarea{
+  width:100%; padding:10px;border-radius:8px;border:1px solid #e6e9ef;font-size:14px;
+}
+label{display:block;margin-bottom:6px;font-size:13px;color:#333}
+button{
+  background:var(--accent); color:#fff; border:0;padding:9px 12px;border-radius:8px;cursor:pointer;font-weight:600;
+}
+.btn-ghost{background:#fff;border:1px solid #e6e9ef;color:#111}
+.row{display:flex;gap:12px;align-items:center}
+.grid{display:grid;gap:12px}
+.small{font-size:13px;color:var(--muted)}
+.error{color:var(--danger);font-weight:700}
+
+.table{width:100%;border-collapse:collapse}
+.table th, .table td{padding:10px;border-bottom:1px solid #f0f2f7;text-align:center;font-size:14px}
+.candidates-grid{display:grid;gap:12px}
+
+.popup{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--card);padding:16px;border-radius:12px;box-shadow:0 20px 40px rgba(8,20,40,0.16);z-index:50;max-width:95%;max-height:90%;overflow:auto;display:none}
+
+/* أنماط التبويبات الجديدة */
+.tabs { display: flex; margin-bottom: 20px; border-bottom: 1px solid #e6e9ef; }
+.tab-btn { background: none; border: none; padding: 10px 20px; cursor: pointer; border-bottom: 3px solid transparent; font-size: 14px; color: var(--muted); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* responsive layouts */
+@media(min-width:1000px){
+  .two-col{display:grid;grid-template-columns:1fr 380px;gap:18px}
+  .candidates-grid{grid-template-columns:repeat(3,1fr)}
+  .grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:999px){
+  .two-col{display:block}
+  .candidates-grid{grid-template-columns:repeat(2,1fr)}
+  .header{flex-direction:column;align-items:flex-start}
+  .h1{font-size:16px}
+  .card{padding:14px}
+  .tabs { flex-direction: column; }
+  .tab-btn { text-align: right; }
+  .grid{grid-template-columns:1fr}
+}
+@media(max-width:520px){
+  .candidates-grid{grid-template-columns:1fr}
+  .row{flex-direction:column;align-items:stretch}
+  button{width:100%}
+  .table th, .table td{font-size:13px;padding:8px}
+  body{padding:12px}
+}
+
+/* إضافة أنماط خانات المرشحين */
+.candidate-item {
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #e6e9ef;
+  margin-bottom: 8px;
+}
+
+.candidate-item label {
+  font-weight: bold;
+  color: #2c3e50;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.candidates-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 15px;
+}
+
+@media (min-width: 768px) {
+  .candidates-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .candidates-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

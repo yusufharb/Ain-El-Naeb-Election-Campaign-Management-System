@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>لوحة الإدارة</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .attendance-card {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid #e6e9ef;
+      margin-bottom: 15px;
+    }
+    .attendance-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 15px;
+      margin-top: 10px;
+    }
+    .stat-item {
+      text-align: center;
+      padding: 10px;
+      background: white;
+      border-radius: 6px;
+      border: 1px solid #e6e9ef;
+    }
+    .total-card {
+      background: #e8f4fd;
+      padding: 20px;
+      border-radius: 8px;
+      border: 2px solid #0b5cff;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="header">
+        <div><div class="h1">لوحة الإدارة — ملخص النتائج</div><div class="small muted">عرض وإجماليات وموافقة المستخدمين</div></div>
+        <div class="row">
+          <button id="exportCsv">تصدير CSV</button>
+          <button id="logoutBtn" class="btn-ghost">خروج</button>
+        </div>
+      </div>
+
+      <div class="tabs" style="margin-bottom: 20px; border-bottom: 1px solid #e6e9ef;">
+        <button class="tab-btn active" data-tab="reports">نتائج الفرز</button>
+        <button class="tab-btn" data-tab="attendance">نسب الحضور</button>
+      </div>
+
+      <div id="reports" class="tab-content active">
+        <h4>حسابات في انتظار الموافقة</h4>
+        <div id="pendingList" class="small muted">جارٍ التحميل...</div>
+
+        <hr/>
+
+        <h4>ملخص كل اللجان</h4>
+        <table class="table" id="reportsTable">
+          <thead><tr><th>لجنة (مندوب)</th><th>إجمالي</th><th>الحضور</th><th>صحيح</th><th>باطل</th><th>تفاصيل</th></tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <hr/>
+        <h4>الإجماليات عبر جميع اللجان</h4>
+        <div id="aggregates" class="small muted">جارٍ التحميل...</div>
+      </div>
+
+      <div id="attendance" class="tab-content">
+        <h4>آخر تحديثات نسب الحضور</h4>
+        <div id="attendanceList" class="small muted">جارٍ التحميل...</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="popup" class="popup"></div>
+
+  <script>
+    // إدارة التبويبات
+    document.addEventListener('DOMContentLoaded', function() {
+      const tabBtns = document.querySelectorAll('.tab-btn');
+      
+      tabBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+          // إزالة النشاط من جميع الأزرار
+          tabBtns.forEach(b => b.classList.remove('active'));
+          
+          // إخفاء جميع المحتويات
+          document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+          });
+          
+          // إضافة النشاط للزر المحدد
+          this.classList.add('active');
+          
+          // إظهار المحتوى المحدد
+          const tabId = this.getAttribute('data-tab');
+          document.getElementById(tabId).classList.add('active');
+        });
+      });
+    });
+  </script>
+
+  <script type="module">
+    import { auth, db } from './firebase.js';
+    import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+    import { 
+      collection, onSnapshot, getDocs, doc, updateDoc, deleteDoc, getDoc 
+    } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+
+    const pendingList = document.getElementById('pendingList');
+    const reportsTableBody = document.querySelector('#reportsTable tbody');
+    const aggregatesDiv = document.getElementById('aggregates');
+    const attendanceList = document.getElementById('attendanceList');
+    const popup = document.getElementById('popup');
+    const exportCsvBtn = document.getElementById('exportCsv');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    let allReports = [];
+    let allAttendanceUpdates = [];
+
+    onAuthStateChanged(auth, async user=>{
+      if(!user) return location.href = 'index.html';
+      
+      // التحقق من صلاحيات الإدمن
+      try {
+        const uDoc = await getDoc(doc(db,'users',user.uid));
+        if(!uDoc.exists() || uDoc.data().role !== 'admin'){ 
+          alert('غير مصرح. يجب أن تكون أدمن.'); 
+          await signOut(auth); 
+          return location.href = 'index.html'; 
+        }
+        setup();
+      } catch (error) {
+        console.error('خطأ في التحقق من الصلاحيات:', error);
+      }
+    });
+
+    function setup(){
+      // تحميل المستخدمين المعلقة
+      const usersCol = collection(db,'users');
+      onSnapshot(usersCol, snaps=>{
+        const pendings = [];
+        snaps.forEach(s=>{ 
+          const d = s.data(); 
+          if(d.status==='pending') pendings.push({id:s.id,...d}); 
+        });
+        renderPending(pendings);
+      });
+
+      // تحميل تقارير الفرز
+      const reportsCol = collection(db,'reports');
+      onSnapshot(reportsCol, snaps=>{
+        const rows = [];
+        snaps.forEach(s=> rows.push({id:s.id, ...s.data()}));
+        allReports = rows;
+        renderReports(rows);
+        renderAggregates(rows);
+      });
+
+      // تحميل تحديثات الحضور
+      const attendanceCol = collection(db,'attendance_updates');
+      onSnapshot(attendanceCol, snaps=>{
+        const updates = [];
+        snaps.forEach(s=> updates.push({id:s.id, ...s.data()}));
+        allAttendanceUpdates = updates;
+        renderAttendanceUpdates(updates);
+      });
+    }
+
+    function renderPending(pendings){
+      if(!pendings.length){ 
+        pendingList.innerHTML = '<div style="padding: 20px; text-align: center; color: #6b7280;">لا يوجد حسابات معلقة</div>'; 
+        return; 
+      }
+      
+      pendingList.innerHTML = '';
+      pendings.forEach(p=>{
+        const div = document.createElement('div'); 
+        div.className = 'attendance-card';
+        div.innerHTML = `
+          <strong>${p.email}</strong> — ${p.committee} 
+          <div style="margin-top:10px">
+            <button data-uid="${p.id}" class="approveBtn" style="background: #27ae60;">✅ قبول</button>
+            <button data-uid="${p.id}" class="rejectBtn" style="background: #c23a3a; margin-right: 10px;">❌ رفض</button>
+          </div>`;
+        pendingList.appendChild(div);
+      });
+      
+      document.querySelectorAll('.approveBtn').forEach(b=> b.onclick = async e=>{
+        const uid = e.target.dataset.uid; 
+        await updateDoc(doc(db,'users',uid), {status:'approved'}); 
+        alert('تمت الموافقة على المندوب.');
+      });
+      
+      document.querySelectorAll('.rejectBtn').forEach(b=> b.onclick = async e=>{
+        const uid = e.target.dataset.uid; 
+        if(confirm('هل تريد حذف هذا المندوب؟')){ 
+          await deleteDoc(doc(db,'users',uid)); 
+          alert('تم حذف المندوب.'); 
+        }
+      });
+    }
+
+    function renderReports(rows){
+      reportsTableBody.innerHTML='';
+      if(rows.length === 0) {
+        reportsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color: #6b7280;">لا توجد تقارير حتى الآن</td></tr>';
+        return;
+      }
+      
+      rows.forEach(r=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>
+            <div><strong>${r.committee}</strong></div>
+            <div class="small muted">${r.email}</div>
+          </td>
+          <td>${r.totalVotes||0}</td>
+          <td>${r.attendance||0}</td>
+          <td>${r.valid||0}</td>
+          <td>${r.invalid||0}</td>
+          <td><button class="viewBtn" data-uid="${r.id}">عرض التفاصيل</button></td>`;
+        reportsTableBody.appendChild(tr);
+      });
+      
+      document.querySelectorAll('.viewBtn').forEach(b=> b.onclick = e=>{
+        const uid = e.target.dataset.uid; 
+        const r = allReports.find(x=>x.id===uid); 
+        if(!r) return;
+        showPopup(r);
+      });
+    }
+
+    function renderAggregates(rows){
+      const agg = {
+        totalVotes:0,
+        attendance:0,
+        valid:0,
+        invalid:0,
+        candidates: Array(13).fill(0)
+      };
+      
+      rows.forEach(r=>{
+        agg.totalVotes += Number(r.totalVotes||0); 
+        agg.attendance += Number(r.attendance||0);
+        agg.valid += Number(r.valid||0); 
+        agg.invalid += Number(r.invalid||0);
+        
+        (r.candidates||[]).forEach(c=>{ 
+          const i = c.id-1; 
+          if(i>=0&&i<13) agg.candidates[i] += Number(c.votes||0); 
+        });
+      });
+      
+      let html = `
+        <div class="attendance-card">
+          <h4 style="margin-top: 0;">الإجماليات النهائية</h4>
+          <div class="attendance-stats">
+            <div class="stat-item">
+              <div class="small muted">إجمالي الأصوات</div>
+              <div style="font-weight: bold; font-size: 24px; color: #0b5cff;">${agg.totalVotes}</div>
+            </div>
+            <div class="stat-item">
+              <div class="small muted">الحضور</div>
+              <div style="font-weight: bold; font-size: 24px; color: #27ae60;">${agg.attendance}</div>
+            </div>
+            <div class="stat-item">
+              <div class="small muted">الصحيح</div>
+              <div style="font-weight: bold; font-size: 24px; color: #2980b9;">${agg.valid}</div>
+            </div>
+          </div>
+        </div>`;
+      
+      html += '<div style="margin-top:20px;"><strong>أصوات المرشحين الإجمالية:</strong></div>';
+      html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 15px;">';
+      
+      agg.candidates.forEach((v,i)=> {
+        html += `
+          <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #e6e9ef;">
+            <div style="font-weight: bold; margin-bottom: 5px;">مرشح ${i+1}</div>
+            <div style="font-size: 18px; font-weight: bold; color: #2c3e50;">${v}</div>
+          </div>`;
+      });
+      
+      html += '</div>';
+      aggregatesDiv.innerHTML = html;
+    }
+
+    function renderAttendanceUpdates(updates){
+      if(!updates.length){ 
+        attendanceList.innerHTML = `
+          <div class="attendance-card" style="text-align: center;">
+            <div style="color: #6b7280; font-size: 16px;">لا توجد تحديثات للحضور حتى الآن</div>
+            <div class="small muted" style="margin-top: 10px;">سيظهر هنا آخر تحديثات نسب الحضور من جميع اللجان</div>
+          </div>
+        `; 
+        return; 
+      }
+      
+      // تجميع آخر تحديث لكل لجنة
+      const latestUpdates = {};
+      updates.forEach(update => {
+        const timestamp = update.timestamp?.toDate?.() || update.timestamp;
+        const updateKey = update.uid || update.committee || update.email;
+        
+        if (!latestUpdates[updateKey] || new Date(timestamp) > new Date(latestUpdates[updateKey].timestamp)) {
+          latestUpdates[updateKey] = { ...update, timestamp };
+        }
+      });
+      
+      attendanceList.innerHTML = '';
+      
+      let totalCommittees = 0;
+      let totalPresence = 0;
+      let committeeCount = 0;
+
+      // عرض كل لجنة على حدة
+      Object.values(latestUpdates).forEach(update => {
+        const timestamp = update.timestamp?.toDate?.() || update.timestamp;
+        const timeString = new Date(timestamp).toLocaleString('ar-EG');
+        const div = document.createElement('div');
+        div.className = 'attendance-card';
+        div.innerHTML = `
+          <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 15px;">
+            <div>
+              <div style="font-weight: bold; font-size: 16px;">${update.committee}</div>
+              <div class="small muted">${update.email}</div>
+            </div>
+            <div class="small muted">${timeString}</div>
+          </div>
+          
+          <div class="attendance-stats">
+            <div class="stat-item">
+              <div class="small muted">إجمالي اللجنة</div>
+              <div style="font-weight: bold; font-size: 20px;">${update.totalCommittee}</div>
+            </div>
+            <div class="stat-item">
+              <div class="small muted">الحضور الحالي</div>
+              <div style="font-weight: bold; font-size: 20px;">${update.currentPresence}</div>
+            </div>
+            <div class="stat-item">
+              <div class="small muted">نسبة الحضور</div>
+              <div style="font-weight: bold; font-size: 20px; color: #0b5cff;">${update.percentage?.toFixed(2) || '0.00'}%</div>
+            </div>
+          </div>
+        `;
+        attendanceList.appendChild(div);
+
+        // حساب الإجماليات
+        totalCommittees += parseInt(update.totalCommittee) || 0;
+        totalPresence += parseInt(update.currentPresence) || 0;
+        committeeCount++;
+      });
+
+      // عرض الإجماليات
+      if (committeeCount > 0) {
+        const overallPercentage = (totalPresence / totalCommittees) * 100;
+        
+        const overallDiv = document.createElement('div');
+        overallDiv.className = 'total-card';
+        overallDiv.innerHTML = `
+          <h4 style="margin-top: 0; text-align: center; color: #0b5cff;">إجمالي جميع اللجان</h4>
+          <div class="attendance-stats">
+            <div class="stat-item">
+              <div class="small muted">إجمالي الناخبين</div>
+              <div style="font-weight: bold; font-size: 24px;">${totalCommittees}</div>
+            </div>
+            <div class="stat-item">
+              <div class="small muted">إجمالي الحضور</div>
+              <div style="font-weight: bold; font-size: 24px;">${totalPresence}</div>
+            </div>
+            <div class="stat-item">
+              <div class="small muted">متوسط النسبة</div>
+              <div style="font-weight: bold; font-size: 24px; color: #0b5cff;">${overallPercentage.toFixed(2)}%</div>
+            </div>
+          </div>
+          <div style="text-align: center; margin-top: 10px; color: #6b7280;">
+            إجمالي ${committeeCount} لجنة
+          </div>
+        `;
+        attendanceList.appendChild(overallDiv);
+      }
+    }
+
+    function showPopup(r){
+      let html = `
+        <div style="max-width: 600px;">
+          <h3 style="margin-top: 0;">تفاصيل اللجنة: ${r.committee}</h3>
+          <div class="small muted" style="margin-bottom: 20px;">${r.email}</div>
+          
+          <div class="attendance-stats">
+            <div class="stat-item">
+              <div class="small muted">إجمالي الأصوات</div>
+              <div style="font-weight: bold; font-size: 20px;">${r.totalVotes}</div>
+            </div>
+            <div class="stat-item">
+              <div class="small muted">الحضور</div>
+              <div style="font-weight: bold; font-size: 20px;">${r.attendance}</div>
+            </div>
+            <div class="stat-item">
+              <div class="small muted">الصحيح</div>
+              <div style="font-weight: bold; font-size: 20px;">${r.valid}</div>
+            </div>
+          </div>
+          
+          <h4 style="margin-top: 20px;">أصوات المرشحين</h4>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 15px;">`;
+      
+      (r.candidates||[]).forEach(c=> {
+        html += `
+          <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; text-align: center;">
+            <div style="font-weight: bold;">مرشح ${c.id}</div>
+            <div style="font-size: 16px; font-weight: bold; color: #2c3e50;">${c.votes}</div>
+          </div>`;
+      });
+      
+      html += `</div>
+          <div style="margin-top:20px; text-align: center;">
+            <button id="closePopup" style="background: #0b5cff; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">إغلاق</button>
+          </div>
+        </div>`;
+      
+      popup.innerHTML = html; 
+      popup.style.display = 'block';
+      
+      document.getElementById('closePopup').onclick = ()=> popup.style.display='none';
+    }
+
+    exportCsvBtn.onclick = ()=>{
+      if(!allReports.length){ 
+        alert('لا توجد بيانات للتصدير'); 
+        return; 
+      }
+      
+      const headers = ['لجنة', 'بريد', 'إجمالي الأصوات', 'الحضور', 'صحيح', 'باطل'];
+      for(let i=1;i<=13;i++) headers.push(`مرشح_${i}`);
+      
+      const lines = [headers.join(',')];
+      allReports.forEach(r=>{
+        const row = [
+          r.committee, 
+          r.email, 
+          r.totalVotes||0, 
+          r.attendance||0, 
+          r.valid||0, 
+          r.invalid||0
+        ];
+        
+        const map = {};
+        (r.candidates||[]).forEach(c=> map[c.id] = c.votes);
+        for(let i=1;i<=13;i++) row.push(map[i]??0);
+        
+        lines.push(row.join(','));
+      });
+      
+      const csv = lines.join('\n'); 
+      const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'}); 
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); 
+      a.href = url; 
+      a.download = 'نتائج_اللجان.csv'; 
+      a.click(); 
+      URL.revokeObjectURL(url);
+    };
+
+    logoutBtn.onclick = ()=> signOut(auth).then(()=> location.href = 'index.html');
+  </script>
+</body>
+</html>

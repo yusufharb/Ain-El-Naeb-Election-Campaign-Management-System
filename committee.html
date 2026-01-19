@@ -1,0 +1,810 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>تسجيل نتيجة اللجنة</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* أنماط التبويبات */
+    .tabs {
+      display: flex;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #e6e9ef;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      padding: 12px 20px;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      font-size: 14px;
+      color: #6b7280;
+      transition: all 0.3s;
+    }
+    .tab-btn.active {
+      color: #0b5cff;
+      border-bottom-color: #0b5cff;
+      font-weight: bold;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.5s;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    /* أنماط خانات المرشحين */
+    .candidate-item {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #e6e9ef;
+      margin-bottom: 10px;
+    }
+    .candidate-item label {
+      font-weight: bold;
+      color: #2c3e50;
+      margin-bottom: 8px;
+      display: block;
+    }
+    .candidates-grid {
+      display: grid;
+      gap: 15px;
+      margin-top: 15px;
+    }
+    @media (min-width: 768px) {
+      .candidates-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    @media (min-width: 1024px) {
+      .candidates-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    /* أنماط إضافية */
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .attendance-result {
+      background: #e8f5e8;
+      padding: 20px;
+      border-radius: 8px;
+      border: 2px solid #4caf50;
+      margin-top: 20px;
+      text-align: center;
+    }
+    .protocol-preview {
+      max-width: 300px;
+      max-height: 400px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      margin: 15px 0;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="header">
+        <div>
+          <div class="h1">تسجيل نتيجة اللجنة</div>
+          <div id="userInfo" class="small muted">جارٍ التحميل...</div>
+        </div>
+        <div class="row">
+          <button id="logoutBtn" class="btn-ghost">خروج</button>
+        </div>
+      </div>
+
+      <!-- تبويبات الصفحة -->
+      <div class="tabs">
+        <button class="tab-btn" onclick="switchTab('counting')">الفرز</button>
+        <button class="tab-btn active" onclick="switchTab('attendance')">نسبة الحضور</button>
+        <button class="tab-btn" onclick="switchTab('protocol')">محضر الفرز</button>
+      </div>
+
+      <!-- قسم الفرز -->
+      <div id="counting" class="tab-content">
+        <div class="grid">
+          <div class="card">
+            <div class="form-group">
+              <label for="totalVotes">إجمالي الأصوات</label>
+              <input type="number" id="totalVotes" min="0" class="input" placeholder="أدخل إجمالي عدد الأصوات"/>
+            </div>
+            
+            <div class="form-group">
+              <label for="attendance">الحضور</label>
+              <input type="number" id="attendance" min="0" class="input" placeholder="أدخل عدد الحضور"/>
+            </div>
+            
+            <div class="form-group">
+              <label for="valid">الصحيح</label>
+              <input type="number" id="valid" min="0" class="input" placeholder="أدخل عدد الأصوات الصحيحة"/>
+            </div>
+            
+            <div class="form-group">
+              <label for="invalid">الباطل</label>
+              <input type="number" id="invalid" min="0" class="input" placeholder="أدخل عدد الأصوات الباطلة"/>
+            </div>
+            
+            <div class="small muted" style="background: #f8f9fa; padding: 10px; border-radius: 6px;">
+              <p>📌 <strong>قواعد التحقق:</strong></p>
+              <p>• الصحيح + الباطل = الحضور</p>
+              <p>• الحضور ≤ إجمالي الأصوات</p>
+              <p>• إجمالي أصوات المرشحين = 2 × الأصوات الصحيحة</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>🗳️ أصوات المرشحين (13 مرشح)</h3>
+            <div id="candidatesGrid" class="candidates-grid">
+              <!-- سيتم إضافة خانات المرشحين هنا -->
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:20px; text-align: center;">
+          <button id="saveBtn" class="btn-primary" style="padding: 12px 30px; font-size: 16px;">💾 حفظ نتائج الفرز</button>
+          <div id="formMsg" class="error" style="margin-top: 15px;"></div>
+        </div>
+      </div>
+
+      <!-- قسم نسبة الحضور -->
+      <div id="attendance" class="tab-content active">
+        <div class="card">
+          <h3>📊 تسجيل نسبة الحضور</h3>
+          <p class="small muted">أدخل بيانات الحضور الحالية للجنة - يمكنك التحديث كل 45 دقيقة</p>
+          
+          <div class="form-group">
+            <label for="totalCommittee">إجمالي عدد الناخبين في اللجنة</label>
+            <input type="number" id="totalCommittee" min="0" class="input" placeholder="مثال: 500 ناخب"/>
+          </div>
+          
+          <div class="form-group">
+            <label for="currentPresence">عدد الحضور الفعلي الآن</label>
+            <input type="number" id="currentPresence" min="0" class="input" placeholder="مثال: 350 حاضر"/>
+          </div>
+          
+          <div class="form-group">
+            <label for="attendancePercentage">نسبة الحضور المحسوبة</label>
+            <input type="text" id="attendancePercentage" class="input" readonly 
+                   style="background-color: #f0f8ff; font-weight: bold; font-size: 18px; text-align: center; color: #0b5cff;"/>
+          </div>
+
+          <div id="attendanceValidation" class="error" style="margin-bottom: 15px;"></div>
+          
+          <div style="margin-top:25px; text-align: center;">
+            <button id="saveAttendanceBtn" class="btn-primary" style="background: #27ae60; padding: 12px 30px; font-size: 16px;">
+              💾 حفظ نسبة الحضور
+            </button>
+          </div>
+          
+          <div id="attendanceMsg" style="margin-top:15px; text-align: center;"></div>
+          
+          <div class="small muted" style="margin-top: 25px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+            <p>⏰ <strong>معلومات التحديث:</strong></p>
+            <p>• يمكنك تحديث نسبة الحضور كل 45 دقيقة</p>
+            <p>• آخر تحديث: <span id="lastUpdateTime">لم يتم تسجيل أي تحديث بعد</span></p>
+          </div>
+        </div>
+
+        <!-- نتيجة الحساب -->
+        <div id="attendanceResult" class="attendance-result" style="display: none;">
+          <h3>✅ تم حفظ نسبة الحضور بنجاح</h3>
+          <div style="font-size: 32px; font-weight: bold; color: #2c3e50; margin: 15px 0;" id="finalPercentage"></div>
+          <p class="small muted" id="calculationDetails"></p>
+          <p style="margin-top: 10px; color: #27ae60;">✔️ تم إرسال النسبة للإدارة</p>
+        </div>
+      </div>
+
+      <!-- قسم محضر الفرز -->
+      <div id="protocol" class="tab-content">
+        <div class="card">
+          <h3>🖼️ رفع صورة محضر الفرز</h3>
+          <p class="small muted">قم برفع صورة محضر الفرز الرسمي كإثبات للنتائج</p>
+          
+          <div class="form-group">
+            <label for="protocolImage">اختر صورة المحضر</label>
+            <input type="file" id="protocolImage" accept="image/*" class="input" style="padding: 10px;">
+            <p class="small muted">📷 يمكنك تصوير المحضر بكاميرا الهاتف أو رفع صورة موجودة</p>
+          </div>
+
+          <div style="text-align: center;">
+            <img id="previewImg" class="protocol-preview">
+          </div>
+          
+          <div style="margin-top:25px; text-align: center;">
+            <button id="uploadProtocolBtn" class="btn-primary" style="background: #8e44ad; padding: 12px 30px; font-size: 16px;">
+              📤 رفع صورة المحضر
+            </button>
+          </div>
+          
+          <div id="protocolMsg" style="margin-top:15px; text-align: center;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // دالة بسيطة ومضمونة لتبديل التبويبات
+    function switchTab(tabName) {
+      console.log('تبديل إلى التبويب:', tabName);
+      
+      // إخفاء جميع المحتويات
+      const tabContents = document.querySelectorAll('.tab-content');
+      tabContents.forEach(content => {
+        content.classList.remove('active');
+      });
+      
+      // إزالة النشاط من جميع الأزرار
+      const tabBtns = document.querySelectorAll('.tab-btn');
+      tabBtns.forEach(btn => {
+        btn.classList.remove('active');
+      });
+      
+      // إظهار المحتوى المحدد
+      const activeTab = document.getElementById(tabName);
+      if (activeTab) {
+        activeTab.classList.add('active');
+      }
+      
+      // تفعيل الزر المحدد
+      const activeBtn = document.querySelector(`[onclick="switchTab('${tabName}')"]`);
+      if (activeBtn) {
+        activeBtn.classList.add('active');
+      }
+    }
+
+    // إنشاء خانات المرشحين
+    function createCandidateFields() {
+      console.log('بدء إنشاء خانات المرشحين...');
+      const candidatesGrid = document.getElementById('candidatesGrid');
+      
+      if (!candidatesGrid) {
+        console.error('لم يتم العثور على العنصر candidatesGrid');
+        return;
+      }
+
+      candidatesGrid.innerHTML = '';
+      
+      for (let i = 1; i <= 13; i++) {
+        const candidateDiv = document.createElement('div');
+        candidateDiv.className = 'candidate-item';
+        candidateDiv.innerHTML = `
+          <label for="candidate${i}">مرشح ${i}</label>
+          <input type="number" id="candidate${i}" min="0" value="0" class="input" placeholder="أدخل عدد الأصوات">
+        `;
+        candidatesGrid.appendChild(candidateDiv);
+      }
+      
+      console.log('تم إنشاء 13 خانة للمرشحين بنجاح');
+    }
+
+    // إعداد حساب النسبة المئوية للحضور
+    function setupAttendanceCalculation() {
+      const totalCommittee = document.getElementById('totalCommittee');
+      const currentPresence = document.getElementById('currentPresence');
+      const attendancePercentage = document.getElementById('attendancePercentage');
+      const attendanceValidation = document.getElementById('attendanceValidation');
+
+      function calculatePercentage() {
+        const total = parseInt(totalCommittee.value) || 0;
+        const current = parseInt(currentPresence.value) || 0;
+        
+        // مسح رسائل الخطأ السابقة
+        if (attendanceValidation) {
+          attendanceValidation.textContent = '';
+        }
+        
+        if (total === 0) {
+          if (attendancePercentage) {
+            attendancePercentage.value = '';
+          }
+          return;
+        }
+        
+        if (current > total) {
+          if (attendancePercentage) {
+            attendancePercentage.value = '!خطأ في الحساب';
+          }
+          if (attendanceValidation) {
+            attendanceValidation.textContent = '❌ عدد الحضور لا يمكن أن يتجاوز إجمالي اللجنة';
+            attendanceValidation.style.color = 'red';
+          }
+          return;
+        }
+        
+        if (total > 0 && current >= 0) {
+          const percentage = (current / total) * 100;
+          if (attendancePercentage) {
+            attendancePercentage.value = percentage.toFixed(2) + '%';
+          }
+          if (attendanceValidation) {
+            attendanceValidation.textContent = '✅ النسبة صحيحة وجاهزة للحفظ';
+            attendanceValidation.style.color = 'green';
+          }
+        } else {
+          if (attendancePercentage) {
+            attendancePercentage.value = '';
+          }
+        }
+      }
+
+      if (totalCommittee && currentPresence) {
+        totalCommittee.addEventListener('input', calculatePercentage);
+        currentPresence.addEventListener('input', calculatePercentage);
+      }
+    }
+
+    // إعداد معاينة الصورة
+    function setupImagePreview() {
+      const protocolImage = document.getElementById('protocolImage');
+      const previewImg = document.getElementById('previewImg');
+
+      if (protocolImage && previewImg) {
+        protocolImage.addEventListener('change', function(e) {
+          const file = e.target.files[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+              previewImg.src = e.target.result;
+              previewImg.style.display = 'block';
+            }
+            reader.readAsDataURL(file);
+          } else {
+            previewImg.style.display = 'none';
+          }
+        });
+      }
+    }
+
+    // تهيئة الصفحة عند التحميل
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('تم تحميل صفحة المندوب بنجاح');
+      
+      // إنشاء خانات المرشحين
+      createCandidateFields();
+      
+      // إعداد حساب النسبة المئوية
+      setupAttendanceCalculation();
+      
+      // إعداد معاينة الصورة
+      setupImagePreview();
+      
+      console.log('تهيئة الصفحة اكتملت بنجاح');
+    });
+  </script>
+
+  <script type="module">
+    import { auth, db } from './firebase.js';
+    import { 
+      onAuthStateChanged, 
+      signOut 
+    } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+    import { 
+      doc, getDoc, setDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp 
+    } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+
+    // عناصر الصفحة
+    const userInfo = document.getElementById('userInfo');
+    const totalVotes = document.getElementById('totalVotes');
+    const attendance = document.getElementById('attendance');
+    const valid = document.getElementById('valid');
+    const invalid = document.getElementById('invalid');
+    const saveBtn = document.getElementById('saveBtn');
+    const formMsg = document.getElementById('formMsg');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const totalCommittee = document.getElementById('totalCommittee');
+    const currentPresence = document.getElementById('currentPresence');
+    const attendancePercentage = document.getElementById('attendancePercentage');
+    const saveAttendanceBtn = document.getElementById('saveAttendanceBtn');
+    const attendanceMsg = document.getElementById('attendanceMsg');
+    const lastUpdateTime = document.getElementById('lastUpdateTime');
+    const attendanceResult = document.getElementById('attendanceResult');
+    const finalPercentage = document.getElementById('finalPercentage');
+    const calculationDetails = document.getElementById('calculationDetails');
+    const protocolImage = document.getElementById('protocolImage');
+    const uploadProtocolBtn = document.getElementById('uploadProtocolBtn');
+    const protocolMsg = document.getElementById('protocolMsg');
+
+    let currentUser = null;
+    let currentProfile = null;
+
+    // متابعة حالة المستخدم
+    onAuthStateChanged(auth, async user => {
+      if (!user) {
+        window.location.href = 'index.html';
+        return;
+      }
+      
+      currentUser = user;
+      console.log('تم التعرف على المستخدم:', user.email);
+      
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        
+        if (!userDoc.exists()) {
+          if (userInfo) userInfo.textContent = `مرحبا ${user.email}`;
+          return;
+        }
+        
+        const userData = userDoc.data();
+        currentProfile = userData;
+        
+        if (userData.status === 'pending') {
+          if (userInfo) userInfo.textContent = '⏳ حسابك في انتظار موافقة الإدارة';
+          if (saveBtn) saveBtn.disabled = true;
+          if (saveAttendanceBtn) saveAttendanceBtn.disabled = true;
+          if (uploadProtocolBtn) uploadProtocolBtn.disabled = true;
+          return;
+        }
+        
+        if (userData.role === 'admin') {
+          window.location.href = 'dashboard.html';
+          return;
+        }
+        
+        if (userInfo) userInfo.textContent = `${userData.email} — ${userData.committee}`;
+        
+        // تحميل بيانات الفرز إذا كانت موجودة
+        try {
+          const reportDoc = await getDoc(doc(db, 'reports', user.uid));
+          if (reportDoc.exists()) {
+            const reportData = reportDoc.data();
+            console.log('تم تحميل بيانات الفرز:', reportData);
+            
+            if (totalVotes) totalVotes.value = reportData.totalVotes || '';
+            if (attendance) attendance.value = reportData.attendance || '';
+            if (valid) valid.value = reportData.valid || '';
+            if (invalid) invalid.value = reportData.invalid || '';
+            
+            // تحميل أصوات المرشحين
+            if (reportData.candidates && Array.isArray(reportData.candidates)) {
+              reportData.candidates.forEach(candidate => {
+                const candidateInput = document.getElementById(`candidate${candidate.id}`);
+                if (candidateInput) {
+                  candidateInput.value = candidate.votes || 0;
+                }
+              });
+            }
+          }
+        } catch (error) {
+          console.error('خطأ في تحميل بيانات الفرز:', error);
+        }
+        
+        // تحميل آخر تحديث للحضور
+        loadLastAttendanceUpdate();
+        
+      } catch (error) {
+        console.error('خطأ في تحميل بيانات المستخدم:', error);
+        if (userInfo) userInfo.textContent = '❌ خطأ في تحميل البيانات';
+      }
+    });
+
+    // جلب آخر تحديث للحضور
+    async function loadLastAttendanceUpdate() {
+      try {
+        const q = query(
+          collection(db, 'attendance_updates'),
+          where('uid', '==', currentUser.uid),
+          orderBy('timestamp', 'desc'),
+          limit(1)
+        );
+        
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          const lastUpdate = querySnapshot.docs[0].data();
+          const timeString = new Date(lastUpdate.timestamp?.toDate?.() || lastUpdate.timestamp).toLocaleString('ar-EG');
+          if (lastUpdateTime) lastUpdateTime.textContent = timeString;
+          
+          if (totalCommittee) totalCommittee.value = lastUpdate.totalCommittee || '';
+          if (currentPresence) currentPresence.value = lastUpdate.currentPresence || '';
+          
+          // تحديث نسبة الحضور
+          const total = parseInt(totalCommittee.value) || 0;
+          const current = parseInt(currentPresence.value) || 0;
+          if (total > 0 && current >= 0 && attendancePercentage) {
+            const percentage = (current / total) * 100;
+            attendancePercentage.value = percentage.toFixed(2) + '%';
+          }
+        } else {
+          if (lastUpdateTime) lastUpdateTime.textContent = 'لم يتم تسجيل أي تحديث بعد';
+        }
+      } catch (error) {
+        console.error('خطأ في تحميل تحديثات الحضور:', error);
+      }
+    }
+
+    // التحقق من الوقت بين التحديثات (45 دقيقة)
+    async function canUpdateAttendance() {
+      try {
+        const q = query(
+          collection(db, 'attendance_updates'),
+          where('uid', '==', currentUser.uid),
+          orderBy('timestamp', 'desc'),
+          limit(1)
+        );
+        
+        const querySnapshot = await getDocs(q);
+        if (querySnapshot.empty) {
+          return true;
+        }
+        
+        const lastUpdate = querySnapshot.docs[0].data();
+        const lastUpdateTime = lastUpdate.timestamp?.toDate?.() || new Date(lastUpdate.timestamp);
+        const lastUpdateTimestamp = new Date(lastUpdateTime).getTime();
+        const currentTime = new Date().getTime();
+        const diffMinutes = (currentTime - lastUpdateTimestamp) / (1000 * 60);
+        
+        console.log(`الوقت المنقضي منذ آخر تحديث: ${diffMinutes.toFixed(1)} دقيقة`);
+        return diffMinutes >= 45;
+      } catch (error) {
+        console.error('خطأ في التحقق من وقت التحديث:', error);
+        return true;
+      }
+    }
+
+    // حفظ نتائج الفرز
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        if (formMsg) {
+          formMsg.textContent = '';
+          formMsg.style.color = 'red';
+        }
+        
+        const totalVotesValue = Number(totalVotes.value) || 0;
+        const attendanceValue = Number(attendance.value) || 0;
+        const validValue = Number(valid.value) || 0;
+        const invalidValue = Number(invalid.value) || 0;
+        
+        // التحقق من القواعد الأساسية
+        if (validValue + invalidValue !== attendanceValue) {
+          if (formMsg) {
+            formMsg.textContent = '❌ خطأ: الصحيح + الباطل يجب أن يساوي الحضور';
+            formMsg.style.color = 'red';
+          }
+          return;
+        }
+        
+        if (attendanceValue > totalVotesValue) {
+          if (formMsg) {
+            formMsg.textContent = '❌ خطأ: الحضور لا يمكن أن يكون أكبر من إجمالي الأصوات';
+            formMsg.style.color = 'red';
+          }
+          return;
+        }
+        
+        if (totalVotesValue < 0 || attendanceValue < 0 || validValue < 0 || invalidValue < 0) {
+          if (formMsg) {
+            formMsg.textContent = '❌ القيم لا يمكن أن تكون سالبة';
+            formMsg.style.color = 'red';
+          }
+          return;
+        }
+
+        // جمع أصوات المرشحين
+        const candidates = [];
+        let totalCandidateVotes = 0;
+        
+        for (let i = 1; i <= 13; i++) {
+          const input = document.getElementById(`candidate${i}`);
+          if (input) {
+            const votes = Number(input.value) || 0;
+            candidates.push({ id: i, votes });
+            totalCandidateVotes += votes;
+          }
+        }
+
+        // التحقق: إجمالي أصوات المرشحين = 2 × الأصوات الصحيحة
+        if (totalCandidateVotes !== 2 * validValue) {
+          if (formMsg) {
+            formMsg.textContent = `❌ خطأ: إجمالي أصوات المرشحين (${totalCandidateVotes}) يجب أن يساوي 2 × الأصوات الصحيحة (${2 * validValue})`;
+            formMsg.style.color = 'red';
+          }
+          return;
+        }
+
+        try {
+          const payload = {
+            uid: currentUser.uid,
+            email: currentProfile.email,
+            committee: currentProfile.committee,
+            totalVotes: totalVotesValue,
+            attendance: attendanceValue,
+            valid: validValue,
+            invalid: invalidValue,
+            candidates: candidates,
+            updatedAt: new Date().toISOString()
+          };
+          
+          await setDoc(doc(db, 'reports', currentUser.uid), payload);
+          if (formMsg) {
+            formMsg.textContent = '✅ تم حفظ نتائج الفرز بنجاح!';
+            formMsg.style.color = 'green';
+          }
+          
+          setTimeout(() => {
+            if (formMsg) formMsg.textContent = '';
+          }, 5000);
+          
+        } catch (error) {
+          if (formMsg) {
+            formMsg.textContent = '❌ خطأ في الحفظ: ' + error.message;
+            formMsg.style.color = 'red';
+          }
+        }
+      });
+    }
+
+    // حفظ نسبة الحضور
+    if (saveAttendanceBtn) {
+      saveAttendanceBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        if (attendanceMsg) {
+          attendanceMsg.textContent = '';
+          attendanceMsg.style.color = 'red';
+        }
+        
+        const total = Number(totalCommittee.value) || 0;
+        const current = Number(currentPresence.value) || 0;
+        
+        if (total <= 0) {
+          if (attendanceMsg) {
+            attendanceMsg.textContent = '⚠️ يرجى إدخال إجمالي اللجنة';
+            attendanceMsg.style.color = 'orange';
+          }
+          return;
+        }
+        
+        if (current < 0) {
+          if (attendanceMsg) {
+            attendanceMsg.textContent = '⚠️ عدد الحضور لا يمكن أن يكون سالباً';
+            attendanceMsg.style.color = 'orange';
+          }
+          return;
+        }
+        
+        if (current > total) {
+          if (attendanceMsg) {
+            attendanceMsg.textContent = '❌ عدد الحضور لا يمكن أن يتجاوز إجمالي اللجنة';
+            attendanceMsg.style.color = 'red';
+          }
+          return;
+        }
+        
+        // التحقق من الوقت بين التحديثات
+        const canUpdate = await canUpdateAttendance();
+        if (!canUpdate) {
+          if (attendanceMsg) {
+            attendanceMsg.textContent = '⏰ يمكنك تحديث نسبة الحضور كل 45 دقيقة فقط. الرجاء الانتظار.';
+            attendanceMsg.style.color = 'orange';
+          }
+          return;
+        }
+        
+        try {
+          const percentage = (current / total) * 100;
+          const attendanceId = currentUser.uid + '_' + new Date().getTime();
+          
+          const payload = {
+            uid: currentUser.uid,
+            email: currentProfile.email,
+            committee: currentProfile.committee,
+            totalCommittee: total,
+            currentPresence: current,
+            percentage: percentage,
+            timestamp: serverTimestamp()
+          };
+          
+          await setDoc(doc(db, 'attendance_updates', attendanceId), payload);
+          
+          // عرض نتيجة الحساب
+          if (attendanceResult) {
+            attendanceResult.style.display = 'block';
+            finalPercentage.textContent = percentage.toFixed(2) + '%';
+            calculationDetails.textContent = `(${current} ÷ ${total}) × 100 = ${percentage.toFixed(2)}%`;
+          }
+          
+          if (attendanceMsg) {
+            attendanceMsg.textContent = '✅ تم حفظ نسبة الحضور بنجاح وتم إرسالها للإدارة';
+            attendanceMsg.style.color = 'green';
+          }
+          
+          if (lastUpdateTime) {
+            lastUpdateTime.textContent = new Date().toLocaleString('ar-EG');
+          }
+          
+          setTimeout(() => {
+            if (attendanceMsg) attendanceMsg.textContent = '';
+          }, 5000);
+          
+        } catch (error) {
+          if (attendanceMsg) {
+            attendanceMsg.textContent = '❌ خطأ في الحفظ: ' + error.message;
+            attendanceMsg.style.color = 'red';
+          }
+        }
+      });
+    }
+
+    // رفع صورة المحضر
+    if (uploadProtocolBtn) {
+      uploadProtocolBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        if (protocolMsg) {
+          protocolMsg.textContent = '';
+          protocolMsg.style.color = 'red';
+        }
+        
+        const file = protocolImage.files[0];
+        
+        if (!file) {
+          if (protocolMsg) {
+            protocolMsg.textContent = '⚠️ يرجى اختيار صورة المحضر أولاً';
+            protocolMsg.style.color = 'orange';
+          }
+          return;
+        }
+        
+        // التحقق من حجم الصورة (5MB كحد أقصى)
+        if (file.size > 5 * 1024 * 1024) {
+          if (protocolMsg) {
+            protocolMsg.textContent = '❌ حجم الصورة كبير جداً. الحد الأقصى 5MB';
+            protocolMsg.style.color = 'red';
+          }
+          return;
+        }
+        
+        try {
+          const protocolId = currentUser.uid + '_protocol_' + new Date().getTime();
+          
+          const payload = {
+            uid: currentUser.uid,
+            email: currentProfile.email,
+            committee: currentProfile.committee,
+            fileName: file.name,
+            fileSize: file.size,
+            uploadedAt: serverTimestamp(),
+            status: 'uploaded'
+          };
+          
+          await setDoc(doc(db, 'protocols', protocolId), payload);
+          
+          if (protocolMsg) {
+            protocolMsg.textContent = '✅ تم رفع صورة المحضر بنجاح';
+            protocolMsg.style.color = 'green';
+          }
+          
+          setTimeout(() => {
+            if (protocolMsg) protocolMsg.textContent = '';
+          }, 5000);
+          
+        } catch (error) {
+          if (protocolMsg) {
+            protocolMsg.textContent = '❌ خطأ في رفع الصورة: ' + error.message;
+            protocolMsg.style.color = 'red';
+          }
+        }
+      });
+    }
+
+    // تسجيل الخروج
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', () => {
+        signOut(auth).then(() => {
+          window.location.href = 'index.html';
+        });
+      });
+    }
+  </script>
+</body>
+</html>

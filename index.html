@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>نظام تتبع اللجان الانتخابية</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .login-container {
+      max-width: 400px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .btn-primary {
+      background: #0b5cff;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .btn-primary:hover {
+      background: #0948cc;
+    }
+
+    .small.muted {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="card login-container">
+      <div class="header">
+        <div>
+          <div class="h1" style="text-align: center; margin-bottom: 10px;">نظام تتبع اللجان الانتخابية</div>
+          <div class="small muted" style="text-align: center;">سجل حساب جديد أو سجل دخول — الإدارة توافق على الحسابات
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top: 30px;">
+        <div>
+          <h3 style="text-align: center;">تسجيل جديد</h3>
+          <div class="form-group">
+            <label>البريد الإلكتروني</label>
+            <input id="regEmail" type="email" class="input" placeholder="example@email.com" />
+          </div>
+          <div class="form-group">
+            <label>كلمة المرور</label>
+            <input id="regPass" type="password" class="input" placeholder="كلمة المرور" />
+          </div>
+          <div class="form-group">
+            <label>اسم اللجنة</label>
+            <input id="regCommittee" type="text" class="input" placeholder="مثال: لجنة 5" />
+          </div>
+          <div style="margin-top:20px">
+            <button id="registerBtn" class="btn-primary">تسجيل حساب جديد</button>
+          </div>
+          <div id="regMsg" class="small muted" style="margin-top:15px; text-align: center;"></div>
+        </div>
+
+        <hr style="margin: 30px 0;" />
+
+        <div>
+          <h3 style="text-align: center;">تسجيل دخول</h3>
+          <div class="form-group">
+            <label>البريد الإلكتروني</label>
+            <input id="loginEmail" type="email" class="input" placeholder="example@email.com" />
+          </div>
+          <div class="form-group">
+            <label>كلمة المرور</label>
+            <input id="loginPass" type="password" class="input" placeholder="كلمة المرور" />
+          </div>
+          <div style="margin-top:20px">
+            <button id="loginBtn" class="btn-primary">تسجيل الدخول</button>
+          </div>
+          <div id="loginMsg" class="error" style="margin-top:15px; text-align: center;"></div>
+        </div>
+
+        <hr style="margin: 30px 0;" />
+
+        <div style="text-align:center;">
+          <p class="small muted">هل تحتاج حساب إدمن؟ إذا لم يكن هناك إدمن مُجهز — اطلب إنشاء حساب إدمن وسيصل الطلب
+            للإدارة للموافقة.</p>
+          <button id="requestAdminBtn" class="btn-primary" style="width:auto; padding:10px 16px;">طلب حساب إدمن</button>
+          <div id="adminReqMsg" class="small muted" style="margin-top:12px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ملاحظة أمان:
+       لا تقم بإنشاء حسابات admins من جهة العميل (client-side) — ذلك يشكل ثغرة أمنية.
+       الطريقة الآمنة: (1) إنشاء Admin يدوياً من Firebase Console أو (2) إنشاء Cloud Function / سكربت خادمي يضع claim = admin للمستخدم بعد تحقق آمن.
+       هنا نوفر آلية طلب Admin (سيُنشأ مستند في 'adminRequests') ليقوم الإداريون بالموافقة لاحقًا. -->
+
+  <script type="module">
+    // استورد auth و db من firebase.js (الإصدار 12.6.0)
+    import { auth, db } from './firebase.js';
+    import { 
+      createUserWithEmailAndPassword, 
+      signInWithEmailAndPassword, 
+      onAuthStateChanged 
+    } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+    import {
+      doc, setDoc, getDoc, collection, addDoc, serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+
+    const regEmail = document.getElementById('regEmail');
+    const regPass = document.getElementById('regPass');
+    const regCommittee = document.getElementById('regCommittee');
+    const registerBtn = document.getElementById('registerBtn');
+    const regMsg = document.getElementById('regMsg');
+    const loginEmail = document.getElementById('loginEmail');
+    const loginPass = document.getElementById('loginPass');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginMsg = document.getElementById('loginMsg');
+    const requestAdminBtn = document.getElementById('requestAdminBtn');
+    const adminReqMsg = document.getElementById('adminReqMsg');
+
+    // تسجيل جديد
+    registerBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      regMsg.textContent = '';
+      loginMsg.textContent = '';
+
+      const email = regEmail.value.trim();
+      const pass = regPass.value;
+      const committee = regCommittee.value.trim() || 'غير محددة';
+
+      if (!email || !pass) {
+        regMsg.textContent = '⚠️ يرجى إدخال البريد الإلكتروني وكلمة المرور';
+        regMsg.style.color = 'red';
+        return;
+      }
+
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, email, pass);
+        await setDoc(doc(db, 'users', cred.user.uid), {
+          email: email,
+          committee: committee,
+          status: 'pending', // بانتظار الموافقة
+          role: 'rep',
+          createdAt: serverTimestamp()
+        });
+
+        regMsg.textContent = '✅ تم إنشاء الحساب بنجاح — في انتظار موافقة الإدارة';
+        regMsg.style.color = 'green';
+
+        // مسح الحقول بعد التسجيل الناجح
+        regEmail.value = '';
+        regPass.value = '';
+        regCommittee.value = '';
+
+      } catch (error) {
+        console.error('خطأ في التسجيل:', error);
+        regMsg.textContent = '❌ ' + (error.message || error.code || 'حصل خطأ');
+        regMsg.style.color = 'red';
+      }
+    });
+
+    // تسجيل دخول
+    loginBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      loginMsg.textContent = '';
+      regMsg.textContent = '';
+
+      const email = loginEmail.value.trim();
+      const pass = loginPass.value;
+
+      if (!email || !pass) {
+        loginMsg.textContent = '⚠️ يرجى إدخال البريد الإلكتروني وكلمة المرور';
+        return;
+      }
+
+      try {
+        const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+        const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+
+        if (!userDoc.exists()) {
+          // إذا لم يكن له بيانات في users، توجيه إلى committee كحل افتراضي
+          window.location.href = 'committee.html';
+          return;
+        }
+
+        const userData = userDoc.data();
+
+        if (userData.status === 'pending') {
+          loginMsg.textContent = '⏳ حسابك في انتظار موافقة الإدارة';
+          return;
+        }
+
+        if (userData.role === 'admin') {
+          window.location.href = 'dashboard.html';
+        } else {
+          window.location.href = 'committee.html';
+        }
+
+      } catch (error) {
+        console.error('خطأ في الدخول:', error);
+        loginMsg.textContent = '❌ ' + (error.message || error.code || 'حصل خطأ');
+      }
+    });
+
+    // التحقق من حالة المستخدم الحالي
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+
+            if (userData.status === 'approved' && userData.role === 'admin') {
+              window.location.href = 'dashboard.html';
+            } else if (userData.status === 'approved') {
+              window.location.href = 'committee.html';
+            }
+          }
+        } catch (error) {
+          console.error('خطأ في التحقق من حالة المستخدم:', error);
+        }
+      }
+    });
+
+    // طلب إنشاء حساب إدمن (آمن: يُسجل طلب في مجموعة adminRequests ليوافق عليه إدمن موجود)
+    requestAdminBtn.addEventListener('click', async () => {
+      adminReqMsg.textContent = '';
+      try {
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          adminReqMsg.textContent = '⚠️ يجب أن تكون مسجلاً لتقديم طلب إدمن. سجل دخول ثم قدم الطلب.';
+          adminReqMsg.style.color = 'red';
+          return;
+        }
+
+        // تحقق إن المستخدم لديه مستند في users
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (!userDoc.exists()) {
+          adminReqMsg.textContent = '⚠️ بيانات المستخدم غير مكتملة في النظام. تواصل مع الإدارة.';
+          adminReqMsg.style.color = 'red';
+          return;
+        }
+
+        // سجّل طلب الإدمن
+        await addDoc(collection(db, 'adminRequests'), {
+          uid: currentUser.uid,
+          email: currentUser.email || null,
+          requestedAt: serverTimestamp(),
+          status: 'pending'
+        });
+
+        adminReqMsg.textContent = '✅ تم إرسال طلب إنشاء حساب إدمن — ستراجع الإدارة الطلب.';
+        adminReqMsg.style.color = 'green';
+      } catch (err) {
+        console.error('خطأ في طلب الإدمن:', err);
+        adminReqMsg.textContent = '❌ حصل خطأ أثناء إرسال الطلب.';
+        adminReqMsg.style.color = 'red';
+      }
+    });
+  </script>
+</body>
+</html>
